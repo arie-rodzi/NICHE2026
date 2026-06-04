@@ -1,19 +1,19 @@
 # NICHE 2026 Conference Registration System
 
-Run:
+Run locally:
+
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Admin login:
-- username: admin
-- password: NICHE2026admin
+Default admin:
+- Username: admin
+- Password: NICHE2026admin
 
-Admin uploads one master Excel workbook with these sheets:
-- 01_PARTICIPANTS_MASTER
-- 02_ABSTRACT_SCHEDULE
-- 03_INDUSTRY_KEYNOTE
-- 04_PROGRAMME_EVENTS
-
-Assets and PDFs can also be replaced inside admin page.
+Admin workflow:
+1. Open Admin Portal.
+2. Login.
+3. Upload one Master Excel workbook.
+4. Upload all event assets: posters, PDF programme/tentatives, seating image.
+5. Participant pages will display uploaded data/assets automatically.
