@@ -283,68 +283,77 @@ def page_home():
     """, unsafe_allow_html=True)
 
 def page_academic():
-    st.header("🎓 Academic Conference Tentative")
+    st.header("🎓 Academic Conference Tentative & Abstracts")
 
-    df = find_sheet(["academic", "presenter", "abstract"])
-    if df is None or df.empty:
-        st.info("Academic data belum ada. Admin perlu upload Excel dalam Admin → Upload Excel.")
+    programme = find_exact_sheet("Academic_Programme")
+    abstracts = find_exact_sheet("Abstracts")
+
+    if programme is None or programme.empty:
+        st.info("Academic_Programme belum ada dalam Excel.")
         return
 
-    time_col = find_col(df, ["time", "masa", "slot"])
-    session_col = find_col(df, ["session", "parallel session", "sesi"])
-    title_col = find_col(df, ["title", "paper title", "presentation title", "tajuk"])
-    author_col = find_col(df, ["author", "presenter", "name", "nama"])
-    id_col = find_col(df, ["paper id", "abstract id", "id", "code"])
-    abstract_col = find_col(df, ["abstract", "full abstract", "abstrak"])
+    if abstracts is None:
+        abstracts = pd.DataFrame()
 
-    if title_col is None:
-        st.warning("Column title/tajuk tidak dijumpai.")
-        st.dataframe(df, use_container_width=True)
-        return
+    abs_map = {}
+    if not abstracts.empty and "Paper_ID" in abstracts.columns:
+        for _, r in abstracts.iterrows():
+            abs_map[clean(r["Paper_ID"])] = {
+                "abstract": clean(r.get("Abstract_Text", "")),
+                "keywords": clean(r.get("Keywords", "")),
+                "authors": clean(r.get("Authors_Affiliation", "")),
+            }
 
-    group_cols = [c for c in [time_col, session_col] if c]
+    for (venue, time, session), g in programme.groupby(
+        ["Venue", "Time", "Session"], dropna=False, sort=False
+    ):
+        venue = clean(venue)
+        time = clean(time)
+        session = clean(session)
 
-    if group_cols:
-        grouped = df.groupby(group_cols, dropna=False, sort=False)
-    else:
-        grouped = [(("", ""), df)]
-
-    for keys, g in grouped:
-        if not isinstance(keys, tuple):
-            keys = (keys,)
-
-        time_txt = clean(keys[0]) if time_col else "Time TBC"
-        session_txt = clean(keys[1]) if time_col and session_col and len(keys) > 1 else (
-            clean(keys[0]) if session_col else "Academic Session"
-        )
-
-        first_title = clean(g.iloc[0][title_col])
+        theme = clean(g.iloc[0].get("Theme", ""))
+        moderator = clean(g.iloc[0].get("Moderator", ""))
 
         st.markdown(f"""
         <div class="session">
           <div class="session-grid">
-            <div class="time">{time_txt}</div>
+            <div class="time">{time}</div>
             <div>
-              <div class="label">{session_txt}</div>
-              <div class="title">{first_title}</div>
+              <div class="label">{session} · {venue}</div>
+              <div class="title">{theme if theme else 'Academic Session'}</div>
+              <div style="color:#cfc9df;margin-top:8px;">Moderator: {moderator if moderator else '-'}</div>
             </div>
           </div>
         """, unsafe_allow_html=True)
 
         for _, r in g.iterrows():
-            pid = clean(r[id_col]) if id_col else "Paper"
-            author = clean(r[author_col]) if author_col else "Presenter TBC"
-            title = clean(r[title_col])
-            abstract = clean(r[abstract_col]) if abstract_col else ""
+            paper_id = clean(r.get("Paper_ID", ""))
+            title = clean(r.get("Title", ""))
+            presenter = clean(r.get("Presenter", ""))
+            email = clean(r.get("Email_From_Abstract", ""))
+
+            # skip registration row if no real paper id
+            if title.upper() == "REGISTRATION":
+                st.markdown(f"""
+                <div class="paper">
+                  <div class="abstract-title">{title}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                continue
+
+            abs_text = abs_map.get(paper_id, {}).get("abstract", "")
+            keywords = abs_map.get(paper_id, {}).get("keywords", "")
 
             st.markdown(f"""
             <div class="paper">
               <div class="paper-top">
-                <span class="pid">{pid}</span>
-                <span class="author">{author}</span>
+                <span class="pid">{paper_id if paper_id else 'Programme'}</span>
+                <span class="author">{presenter}</span>
               </div>
               <div class="abstract-title">{title}</div>
-              <div class="abstract">{abstract}</div>
+              <div style="color:#cfc9df;margin-top:5px;">{email}</div>
+              <div class="abstract">{abs_text if abs_text else 'Abstract not available.'}</div>
+              <div style="color:#ffe88a;font-size:13px;margin-top:8px;">{keywords}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -382,32 +391,25 @@ def page_industry():
 
 def page_dinner():
     show_poster(DINNER_POSTER)
-    st.header("✨ Gala Dinner")
+    st.header("✨ Gala Dinner Tentative")
 
-    df = find_sheet(["gala", "dinner"])
+    df = find_exact_sheet("Gala_Dinner_Programme")
+
     if df is None or df.empty:
-        st.markdown("""
-        <div class="card">
-        <h3>Exclusive Gala Dinner</h3>
-        <p>Official launching ceremony, welcome dinner, networking session, cultural performance, photo session and press conference.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.info("Gala_Dinner_Programme belum ada dalam Excel.")
         return
 
-    time_col = find_col(df, ["time", "masa", "slot"])
-    title_col = find_col(df, ["title", "programme", "program", "agenda", "activity", "aktiviti"])
-
     for _, r in df.iterrows():
-        time_txt = clean(r[time_col]) if time_col else "Time TBC"
-        title = clean(r[title_col]) if title_col else "Gala Dinner Activity"
+        time_txt = clean(r.get("Time", ""))
+        event = clean(r.get("Event", ""))
 
         st.markdown(f"""
         <div class="session">
           <div class="session-grid">
             <div class="time">{time_txt}</div>
             <div>
-              <div class="label">Gala Dinner</div>
-              <div class="title">{title}</div>
+              <div class="label">Gala Dinner Programme</div>
+              <div class="title">{event}</div>
             </div>
           </div>
         </div>
