@@ -473,7 +473,48 @@ def page_academic():
           </div>
         """, unsafe_allow_html=True)
 
-        for _, r in g.iterrows():
+        # Tambah idx untuk menjejak indeks baris bagi setiap paper kerja secara unik
+        for idx, (_, r) in enumerate(g.iterrows()):
+            paper_id = clean(r.get("Paper_ID", ""))
+            title = clean(r.get("Title", ""))
+            presenter = clean(r.get("Presenter", ""))
+            email = clean(r.get("Email_From_Abstract", ""))
+
+            title_low = title.lower()
+            is_non_paper = (
+                not paper_id or
+                any(k in title_low for k in non_paper_keywords)
+            )
+
+            if is_non_paper:
+                st.markdown(f"""
+                <div class="paper">
+                  <div class="abstract-title" style="font-size: 16px; color: #aaa4bd !important;">{title if title else session}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                continue
+
+            # Paparan kad ringkas untuk kertas penyelidikan (Paper)
+            st.markdown(f"""
+            <div class="paper" style="border-left: 4px solid #d4af37;">
+              <div class="paper-top">
+                <span class="pid">{paper_id}</span>
+                <span class="author">{presenter}</span>
+              </div>
+              <div class="abstract-title">{title}</div>
+              <div style="color:#cfc9df;margin-top:5px;font-size:13px;margin-bottom:10px;">{email}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Memasukkan Butang Pencetus Popup Moden
+            paper_info = abs_map.get(paper_id, {
+                "title": title, "presenter": presenter, "email": email,
+                "abstract": "", "keywords": "", "affiliation": ""
+            })
+            
+            # Ganti 'index' sebelum ini kepada 'idx' yang diambil dari enumerate
+            if st.button(f"📄 View Abstract & Authors ({paper_id})", key=f"btn_{paper_id}_{idx}"):
+                show_abstract_popup(paper_id, paper_info)
             paper_id = clean(r.get("Paper_ID", ""))
             title = clean(r.get("Title", ""))
             presenter = clean(r.get("Presenter", ""))
