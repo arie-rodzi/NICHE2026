@@ -571,7 +571,7 @@ def page_dinner():
         """, unsafe_allow_html=True)
 
 def page_register():
-    st.header("📝 Register")
+    st.header("📝 Register New Participant")
 
     with st.form("reg_form"):
         c1, c2 = st.columns(2)
@@ -584,11 +584,14 @@ def page_register():
             ptype = st.selectbox("Participant Type", [
                 "Academic Presenter",
                 "Industry Participant",
+                "Media",          # <-- Kategori Baharu Ditambah
                 "Speaker",
                 "Delegate",
                 "Guest",
                 "Walk-in"
             ])
+            
+            # Jika Media dipilih, sistem akan auto-set datang dinner di bahagian simpan data
             dinner = st.radio("Attend Gala Dinner?", ["Yes", "No"], horizontal=True)
 
         submit = st.form_submit_button("Register")
@@ -608,8 +611,13 @@ def page_register():
             st.warning("Email ini sudah didaftarkan. Sila terus ke Check-In.")
             return
 
-        dinner_flag = 1 if dinner == "Yes" else 0
-        table_no = next_table() if dinner_flag else None
+        # --- LOGIK KHAS UNTUK MEDIA ---
+        if ptype == "Media":
+            dinner_flag = 1
+            table_no = 28  # Khas untuk Media terus dapat Meja 28
+        else:
+            dinner_flag = 1 if dinner == "Yes" else 0
+            table_no = next_table() if dinner_flag else None
 
         exec_sql("""
             INSERT INTO participants
@@ -620,9 +628,13 @@ def page_register():
             dinner_flag, table_no, datetime.now().isoformat(timespec="seconds")
         ))
 
-        log("REGISTER", email2)
-        st.success("Registration successful. Please go to Check-In tab.")
-
+        log("REGISTER", f"Type: {ptype}, Email: {email2}")
+        
+        # Beri makluman popup/notifikasi khas yang mesra pengguna
+        if ptype == "Media":
+            st.success("Registration successful! Special Allocation: Table 28 assigned for Media.")
+        else:
+            st.success("Registration successful. Please go to Check-In tab.")
 def page_checkin():
     st.header("✓ Self Check-In & Counter Services")
 
@@ -911,9 +923,72 @@ def page_admin():
                 st.rerun()
 
     st.markdown("---")
+    st.markdown("---")
     st.markdown("## ➕ Walk-In Registration")
 
-    with st.form("walkin"):
+    # --- POP-UP MODAL EXCLUSIVE SELEPAS BERJAYA SAVE WALK-IN ---
+    @st.dialog("✨ Registration & Check-In Success!", width="large")
+    def show_walkin_success_popup(p_name, p_email, p_type, p_table, p_id):
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, rgba(255,240,163,0.1), rgba(212,175,55,0.05)); padding: 22px; border-radius: 18px; border: 1px solid rgba(244,212,105,0.3); margin-bottom: 20px; text-align: center;">
+            <div style="font-size: 50px; margin-bottom: 10px;">✅</div>
+            <h2 style="color: #ffe88a !important; font-size: 26px; font-weight: 900; margin: 0 0 10px 0;">Successfully Checked-In!</h2>
+            <p style="color: #fff; font-size: 18px; font-weight: 700; margin: 0;">{p_name}</p>
+            <p style="color: #aaa4bd; font-size: 14px; margin: 4px 0 0 0;">{p_email} · <span style="color: #ffe88a;">{p_type}</span></p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_left, col_right = st.columns(2)
+        
+        with col_left:
+            st.markdown("""<div style="text-align: center; margin-top: 10px;">""", unsafe_allow_html=True)
+            st.subheader("🍽️ Gala Dinner Table")
+            if p_table:
+                st.markdown(f"""
+                <div style="background: rgba(5,10,46,0.8); border: 2px solid #d4af37; border-radius: 14px; padding: 20px; font-size: 32px; font-weight: 900; color: #ffe88a; text-align: center; margin-bottom: 15px;">
+                    TABLE {p_table}
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div style="background: rgba(255,255,255,0.05); border: 1px dashed rgba(255,255,255,0.2); border-radius: 14px; padding: 20px; font-size: 20px; font-weight: 700; color: #aaa4bd; text-align: center; margin-bottom: 15px;">
+                    ❌ Not Attending Dinner
+                </div>
+                """, unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with col_right:
+            st.markdown("""<div style="text-align: center; margin-top: 10px;">""", unsafe_allow_html=True)
+            st.subheader("🎁 Counter Door Gift")
+            
+            # Kita guna session state sementara supaya admin boleh tick direct dalam popup ini
+            gift_key = f"popup_gift_{p_id}"
+            if gift_key not in st.session_state:
+                st.session_state[gift_key] = False
+
+            if st.session_state[gift_key]:
+                st.markdown("""
+                <div style="background: rgba(46,204,113,0.15); border: 1px solid #2ecc71; border-radius: 14px; padding: 24px; font-size: 18px; font-weight: 700; color: #2ecc71; text-align: center;">
+                    ✅ Door Gift Collected
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                if st.button("🎁 Tick Taken / Ambil Door Gift", type="primary", use_container_width=True, key=f"btn_pop_gift_{p_id}"):
+                    exec_sql(
+                        "UPDATE participants SET door_gift_collected=1, door_gift_time=? WHERE id=?",
+                        (datetime.now().isoformat(timespec="seconds"), int(p_id))
+                    )
+                    st.session_state[gift_key] = True
+                    st.success("Door gift marked as collected!")
+                    st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("<br><hr style='border:0; border-top:1px solid rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+        if st.button("Close & Clear Form", use_container_width=True, key="btn_close_popup"):
+            st.rerun()
+
+    # --- BORANG WALK-IN INPUT ---
+    with st.form("walkin", clear_on_submit=True):
         c1, c2 = st.columns(2)
         with c1:
             w_name = st.text_input("Walk-in Name")
@@ -921,33 +996,50 @@ def page_admin():
             w_org = st.text_input("Walk-in Organisation")
         with c2:
             w_phone = st.text_input("Walk-in Phone")
-            w_type = st.selectbox("Walk-in Type", ["Walk-in","Guest","Industry Participant","Academic Presenter"])
-            w_dinner = st.radio("Dinner?", ["Yes","No"], horizontal=True)
+            # Dropdown ditambah jenis "Media"
+            w_type = st.selectbox("Walk-in Type", ["Walk-in", "Guest", "Media", "Industry Participant", "Academic Presenter"])
+            w_dinner = st.radio("Dinner?", ["Yes", "No"], horizontal=True)
 
-        w_submit = st.form_submit_button("Save Walk-In")
+        w_submit = st.form_submit_button("Save & Check-In Participant")
 
+    # --- PROSES SIMPAN DATA KE SQLITE ---
     if w_submit:
         if not w_name.strip() or not w_email.strip():
             st.error("Name and email required.")
         else:
             email2 = w_email.strip().lower()
             exists = df_sql("SELECT id FROM participants WHERE lower(email)=lower(?)", (email2,))
+            
             if not exists.empty:
-                st.warning("Email already exists.")
+                st.warning("Email already exists. Please check under Registered Participants.")
             else:
-                flag = 1 if w_dinner == "Yes" else 0
-                tbl = next_table() if flag else None
+                # Logik Auto-Assign Meja (Media dapat Table 28, lain-lain ikut kekosongan semeja max 8 orang)
+                if w_type == "Media":
+                    flag = 1
+                    tbl = 28
+                else:
+                    flag = 1 if w_dinner == "Yes" else 0
+                    tbl = next_table() if flag else None
+
+                # Simpan terus sebagai data yang dah CHECKED-IN (checked_in=1)
+                now_str = datetime.now().isoformat(timespec="seconds")
                 exec_sql("""
                     INSERT INTO participants
-                    (full_name,email,organisation,phone,participant_type,dinner_join,table_number,checked_in,checkin_time,created_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                    (full_name, email, organisation, phone, participant_type, dinner_join, table_number, checked_in, checkin_time, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     w_name.strip(), email2, w_org.strip(), w_phone.strip(), w_type,
-                    flag, tbl, 1, datetime.now().isoformat(timespec="seconds"),
-                    datetime.now().isoformat(timespec="seconds")
+                    flag, tbl, 1, now_str, now_str
                 ))
-                st.success("Walk-in registered and checked-in.")
-                st.rerun()
+                
+                # Ambil ID terakhir dimasukkan untuk tracking door gift di popup
+                new_id_df = df_sql("SELECT id FROM participants WHERE lower(email)=lower(?)", (email2,))
+                new_id = int(new_id_df.iloc[0]["id"]) if not new_id_df.empty else 0
+                
+                log("WALKIN_REGISTER", f"{email2} assigned to Table {tbl}")
+                
+                # CETUSKAN POP-UP MODAL YANG WOW
+                show_walkin_success_popup(w_name.strip(), email2, w_type, tbl, new_id)
 
     st.markdown("---")
     st.markdown("## 🧹 Clear / Reset Data")
