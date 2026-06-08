@@ -776,15 +776,40 @@ def page_admin():
         ORDER BY table_number IS NULL DESC, table_number, full_name
     """)
 
+    dinner_df = df_sql("""
+        SELECT id, full_name, email, organisation, table_number
+        FROM participants
+        WHERE dinner_join=1
+        ORDER BY table_number IS NULL DESC, table_number, full_name
+    """)
+
     for _, p in dinner_df.iterrows():
         c1, c2, c3 = st.columns([4, 1.5, 1])
-        c1.write(f"**{p['full_name']}**  \n{p['email']}")
-        cur = int(p["table_number"]) if pd.notna(p["table_number"]) else None
+        c1.write(f"**{p['full_name']}** \n{p['email']}")
+        
+        # --- FIXED CONVERSION START ---
+        # Menukar data kepada integer secara selamat untuk mengelakkan ralat ValueError
+        table_val = p["table_number"]
+        cur = None
+        try:
+            if pd.notna(table_val) and str(table_val).strip() not in ["", "nan", "None"]:
+                cur = int(float(table_val))
+        except (ValueError, TypeError):
+            cur = None
+        # --- FIXED CONVERSION END ---
+
         options = [None] + TABLES
+        
+        # Memastikan indeks selectbox selamat jika cur tiada dalam TABLES rasmi
+        try:
+            sel_index = options.index(cur)
+        except ValueError:
+            sel_index = 0  # Default balik kepada None jika nombor meja di luar senarai rasmi
+
         new_table = c2.selectbox(
             "Table",
             options,
-            index=options.index(cur),
+            index=sel_index,
             format_func=lambda x: "None" if x is None else f"Table {x}",
             key=f"table_{p['id']}",
             label_visibility="collapsed"
@@ -794,7 +819,7 @@ def page_admin():
                 exec_sql("UPDATE participants SET table_number=NULL WHERE id=?", (int(p["id"]),))
             else:
                 occ_now = table_occupancy()
-                if new_table != cur and occ_now[new_table] >= SEATS:
+                if new_table != cur and occ_now.get(new_table, 0) >= SEATS:
                     st.error(f"Table {new_table} penuh.")
                     continue
                 exec_sql("UPDATE participants SET table_number=? WHERE id=?", (new_table, int(p["id"])))
