@@ -573,9 +573,18 @@ def page_dinner():
 def page_register():
     st.header("📝 New Registration & Instant Check-In")
 
-    # --- POP-UP MODAL MEWAH SELEPAS BERJAYA DAFTAR ---
+    # --- POP-UP MODAL MEWAH (KALIS DATA ROBOT & BOLEH TICK DOOR GIFT) ---
     @st.dialog("✨ Welcome to NICHE 2026!", width="large")
     def show_registration_success_popup(p_name, p_email, p_type, p_table, p_id):
+        
+        # --- LOGIK TAPISAN DATA ROBOT (BYTES TO INT) ---
+        display_table = p_table
+        if isinstance(p_table, bytes):
+            try:
+                display_table = int.from_bytes(p_table, byteorder='little')
+            except:
+                display_table = p_table
+
         st.markdown(f"""
         <div style="background: linear-gradient(135deg, rgba(255,240,163,0.1), rgba(212,175,55,0.05)); padding: 22px; border-radius: 18px; border: 1px solid rgba(244,212,105,0.3); margin-bottom: 20px; text-align: center;">
             <div style="font-size: 50px; margin-bottom: 10px;">🎉</div>
@@ -587,16 +596,24 @@ def page_register():
 
         col_left, col_right = st.columns(2)
         
-        # --- SEKSYEN PAPARAN MEJA ---
+        # --- SEKSYEN PAPARAN MEJA DINNER ---
         with col_left:
             st.markdown("""<div style="text-align: center; margin-top: 10px;">""", unsafe_allow_html=True)
             st.subheader("🍽️ Gala Dinner Table")
-            if p_table:
-                st.markdown(f"""
-                <div style="background: rgba(5,10,46,0.8); border: 2px solid #d4af37; border-radius: 14px; padding: 20px; font-size: 32px; font-weight: 900; color: #ffe88a; text-align: center; margin-bottom: 15px;">
-                    TABLE {p_table}
-                </div>
-                """, unsafe_allow_html=True)
+            if display_table and str(display_table).strip() not in ["", "None", "nan"]:
+                try:
+                    table_num = int(float(display_table))
+                    st.markdown(f"""
+                    <div style="background: rgba(5,10,46,0.8); border: 2px solid #d4af37; border-radius: 14px; padding: 20px; font-size: 32px; font-weight: 900; color: #ffe88a; text-align: center; margin-bottom: 15px;">
+                        TABLE {table_num}
+                    </div>
+                    """, unsafe_allow_html=True)
+                except:
+                    st.markdown(f"""
+                    <div style="background: rgba(5,10,46,0.8); border: 2px solid #d4af37; border-radius: 14px; padding: 20px; font-size: 32px; font-weight: 900; color: #ffe88a; text-align: center; margin-bottom: 15px;">
+                        TABLE {display_table}
+                    </div>
+                    """, unsafe_allow_html=True)
             else:
                 st.markdown("""
                 <div style="background: rgba(255,255,255,0.05); border: 1px dashed rgba(255,255,255,0.2); border-radius: 14px; padding: 20px; font-size: 20px; font-weight: 700; color: #aaa4bd; text-align: center; margin-bottom: 15px;">
@@ -605,7 +622,7 @@ def page_register():
                 """, unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # --- SEKSYEN TEKAN AMBIL DOOR GIFT ---
+        # --- SEKSYEN TEKAN TICK DOOR GIFT ---
         with col_right:
             st.markdown("""<div style="text-align: center; margin-top: 10px;">""", unsafe_allow_html=True)
             st.subheader("🎁 Counter Door Gift")
@@ -657,7 +674,7 @@ def page_register():
 
         submit = st.form_submit_button("Register & Check-In Now")
 
-    # --- PROSES AUTO-SAVE & AUTO-CHECK IN ---
+    # --- PROSES AUTO-SAVE & AUTO-CHECK IN KE DATABASES ---
     if submit:
         if not name.strip() or not email.strip():
             st.error("Nama dan email wajib diisi.")
@@ -673,7 +690,7 @@ def page_register():
             st.warning("Email ini sudah didaftarkan. Sila semak status di tab 'Check-In'.")
             return
 
-        # Aturan Meja: Media terus lock Table 28, lain-lain ikut baki kekosongan semeja max 8 orang
+        # Logik Agihan Meja: Media terus lock Table 28, lain-lain ikut baki kekosongan semeja max 8 orang
         if ptype == "Media":
             dinner_flag = 1
             table_no = 28
@@ -681,7 +698,7 @@ def page_register():
             dinner_flag = 1 if dinner == "Yes" else 0
             table_no = next_table() if dinner_flag else None
 
-        # Terus set checked_in = 1 dan checkin_time = sekarang (Jimat satu langkah kerja!)
+        # Set data terus kepada CHECKED-IN (checked_in=1 dan checkin_time dicop terus)
         now_str = datetime.now().isoformat(timespec="seconds")
         exec_sql("""
             INSERT INTO participants
@@ -692,13 +709,13 @@ def page_register():
             dinner_flag, table_no, 1, now_str, now_str
         ))
 
-        # Dapatkan ID peserta yang baru disuntik masuk
+        # Dapatkan ID peserta baharu untuk tracking butang door gift di popup dialog
         new_id_df = df_sql("SELECT id FROM participants WHERE lower(email)=lower(?)", (email2,))
         new_id = int(new_id_df.iloc[0]["id"]) if not new_id_df.empty else 0
 
-        log("REGISTER_AND_CHECKIN", f"Instant Check-In for {email2}")
+        log("REGISTER_AND_CHECKIN", f"Instant Check-In for {email2}, Assigned Table: {table_no}")
         
-        # CETUSKAN POP-UP SERTA-MERTA!
+        # CETUSKAN POP-UP SERTA-MERTA SECARA KEKAL
         show_registration_success_popup(name.strip(), email2, ptype, table_no, new_id)
         
 def page_checkin():
