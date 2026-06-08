@@ -382,30 +382,75 @@ def page_academic():
     if abstracts is None:
         abstracts = pd.DataFrame()
 
+    # Membina peta maklumat lengkap daripada helaian 'Abstracts' di dalam NICHE2026_MASTER_AUDITED.xlsx
     abs_map = {}
     if not abstracts.empty and "Paper_ID" in abstracts.columns:
         for _, r in abstracts.iterrows():
             pid = clean(r.get("Paper_ID", ""))
             if pid:
                 abs_map[pid] = {
+                    "title": clean(r.get("Title", "")),
+                    "presenter": clean(r.get("Presenter", "")),
+                    "email": clean(r.get("Email", "")),
                     "abstract": clean(r.get("Abstract_Text", "")),
                     "keywords": clean(r.get("Keywords", "")),
+                    "affiliation": clean(r.get("Authors_Affiliation", "")) # Data dari NICHE2026_MASTER_AUDITED.xlsx
                 }
 
     non_paper_keywords = [
-        "registration",
-        "break",
-        "lunch",
-        "tea",
-        "best award",
-        "best paper",
-        "closing",
-        "opening",
-        "photo",
-        "prayer",
-        "certificate"
+        "registration", "break", "lunch", "tea", "best award", 
+        "best paper", "closing", "opening", "photo", "prayer", "certificate"
     ]
 
+    # --- 1. DEKLARASI POPUP MODAL (ST.DIALOG) YANG WOW ---
+    @st.dialog("📝 Academic Research Paper Details", width="large")
+    def show_abstract_popup(p_id, data):
+        # Header Tajuk Kajian
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, rgba(255,240,163,0.1), rgba(212,175,55,0.05)); padding: 20px; border-radius: 14px; border-left: 5px solid #d4af37; margin-bottom: 20px;">
+            <span style="background: linear-gradient(135deg,#fff0a3,#d4af37); color:#07103e; padding:4px 12px; border-radius:999px; font-weight:900; font-size:12px; letter-spacing:1px; text-transform:uppercase;">{p_id}</span>
+            <h2 style="color: #ffe88a !important; font-size: 24px; font-weight: 900; margin-top: 12px; margin-bottom: 5px; line-height: 1.3;">{data['title']}</h2>
+            <p style="color: #aaa4bd; font-size: 14px; margin: 0;">Presenter: <strong style="color: #fff;">{data['presenter']}</strong> ({data['email']})</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Seksyen Penulis & Afiliasi (Authors & Affiliation)
+        st.markdown("### 👥 Authors & Affiliations")
+        if data['affiliation']:
+            # Menyusun teks afiliasi supaya mesra baris baharu
+            formatted_aff = data['affiliation'].replace('\n', '<br>')
+            st.markdown(f"""
+            <div style="background: rgba(255,255,255,0.04); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); font-size: 14px; color: #e2dfeb; line-height: 1.6;">
+                {formatted_aff}
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.caption("No affiliation metadata provided.")
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Seksyen Teks Abstrak
+        st.markdown("### 📖 Abstract")
+        if data['abstract']:
+            st.markdown(f"""
+            <div style="background: rgba(5,10,46,0.6); padding: 20px; border-radius: 12px; border: 1px solid rgba(244,212,105,0.15); font-size: 15px; color: #cfc9df; line-height: 1.7; text-align: justify; max-height: 350px; overflow-y: auto;">
+                {data['abstract']}
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("Abstract text not available for this presentation.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Seksyen Kata Kunci (Keywords)
+        if data['keywords']:
+            st.markdown(f"""
+            <div style="font-size: 13px; color: #ffe88a; background: rgba(244,212,105,0.08); padding: 10px 15px; border-radius: 8px; display: inline-block;">
+                🔑 <strong>Keywords:</strong> {data['keywords']}
+            </div>
+            """, unsafe_allow_html=True)
+
+    # --- 2. PAPARAN KANVAS UTAMA JADUAL AKADEMIK ---
     for (venue, time, session), g in programme.groupby(
         ["Venue", "Time", "Session"], dropna=False, sort=False
     ):
@@ -443,26 +488,32 @@ def page_academic():
             if is_non_paper:
                 st.markdown(f"""
                 <div class="paper">
-                  <div class="abstract-title">{title if title else session}</div>
+                  <div class="abstract-title" style="font-size: 16px; color: #aaa4bd !important;">{title if title else session}</div>
                 </div>
                 """, unsafe_allow_html=True)
                 continue
 
-            abs_text = abs_map.get(paper_id, {}).get("abstract", "")
-            keywords = abs_map.get(paper_id, {}).get("keywords", "")
-
+            # Paparan kad ringkas untuk kertas penyelidikan (Paper)
             st.markdown(f"""
-            <div class="paper">
+            <div class="paper" style="border-left: 4px solid #d4af37;">
               <div class="paper-top">
                 <span class="pid">{paper_id}</span>
                 <span class="author">{presenter}</span>
               </div>
               <div class="abstract-title">{title}</div>
-              <div style="color:#cfc9df;margin-top:5px;">{email}</div>
-              <div class="abstract">{abs_text if abs_text else 'Abstract not available.'}</div>
-              <div style="color:#ffe88a;font-size:13px;margin-top:8px;">{keywords}</div>
+              <div style="color:#cfc9df;margin-top:5px;font-size:13px;margin-bottom:10px;">{email}</div>
             </div>
             """, unsafe_allow_html=True)
+            
+            # Memasukkan Butang Pencetus Popup Moden
+            paper_info = abs_map.get(paper_id, {
+                "title": title, "presenter": presenter, "email": email,
+                "abstract": "", "keywords": "", "affiliation": ""
+            })
+            
+            # Rekabentuk butang khas di bawah kad kertas kerja
+            if st.button(f"📄 View Abstract & Authors ({paper_id})", key=f"btn_{paper_id}_{index}"):
+                show_abstract_popup(paper_id, paper_info)
 
         st.markdown("</div>", unsafe_allow_html=True)
 def page_industry():
