@@ -700,6 +700,7 @@ def page_register():
         
         # CETUSKAN POP-UP SERTA-MERTA!
         show_registration_success_popup(name.strip(), email2, ptype, table_no, new_id)
+        
 def page_checkin():
     st.header("✓ Self Check-In & Counter Services")
 
@@ -714,13 +715,44 @@ def page_checkin():
         return
 
     p = df.iloc[0]
+    p_id = int(p['id'])
 
+    # --- DEKLARASI POP-UP MEJA DINNER YANG KEKAL (TIADA AUTO-RESET) ---
+    @st.dialog("🍽️ Gala Dinner Seat Allocation", width="large")
+    def show_dinner_table_popup(name, table_no):
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, rgba(255,240,163,0.1), rgba(212,175,55,0.05)); padding: 25px; border-radius: 18px; border: 1px solid rgba(244,212,105,0.3); text-align: center; margin-bottom: 15px;">
+            <div style="font-size: 50px; margin-bottom: 10px;">🍽️</div>
+            <h2 style="color: #ffe88a !important; font-size: 24px; font-weight: 900; margin: 0 0 10px 0;">Dinner Status Confirmed!</h2>
+            <p style="color: #aaa4bd; font-size: 15px; margin: 0;">Participant Name:</p>
+            <p style="color: #fff; font-size: 20px; font-weight: 800; margin: 4px 0 15px 0;">{name}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if table_no:
+            st.markdown(f"""
+            <div style="background: #050a2e; border: 2px solid #d4af37; border-radius: 14px; padding: 25px; text-align: center; margin-bottom: 20px;">
+                <span style="color: #aaa4bd; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Your Assigned Seat</span>
+                <h1 style="color: #ffe88a !important; font-size: 48px; font-weight: 900; margin: 10px 0 0 0;">TABLE {table_no}</h1>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background: rgba(255,255,255,0.05); border: 1px dashed rgba(255,255,255,0.2); border-radius: 14px; padding: 25px; text-align: center; margin-bottom: 20px; color: #aaa4bd; font-size: 18px; font-weight: 700;">
+                ❌ Status: Not Attending Dinner
+            </div>
+            """, unsafe_allow_html=True)
+            
+        if st.button("OK, Close Window", use_container_width=True, key="btn_close_dinner_pop"):
+            st.rerun()
+
+    # --- KAD MAKLUMAT PESERTA ---
     st.markdown(f"""
     <div class="card">
     <h3>{clean(p['full_name'])}</h3>
     <p>Email: {clean(p['email'])}<br>
     Organisation: {clean(p['organisation']) or '-'}<br>
-    Type: {clean(p['participant_type']) or '-'}</p>
+    Type: <span style="color: #ffe88a; font-weight: bold;">{clean(p['participant_type']) or '-'}</span></p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -737,12 +769,12 @@ def page_checkin():
     except:
         c3.warning("Table not assigned")
 
-    # ---------------- 1. CONFIRM CHECK-IN ----------------
+    # ---------------- 1. BUTTON CONFIRM CHECK-IN ----------------
     if not int(p["checked_in"]):
-        if st.button("Confirm Check-In", use_container_width=True):
+        if st.button("Confirm Check-In", use_container_width=True, key="btn_main_checkin"):
             exec_sql(
                 "UPDATE participants SET checked_in=1, checkin_time=? WHERE id=?",
-                (datetime.now().isoformat(timespec="seconds"), int(p["id"]))
+                (datetime.now().isoformat(timespec="seconds"), p_id)
             )
             log("CHECKIN", email)
             st.success("Check-in successful.")
@@ -752,44 +784,50 @@ def page_checkin():
 
     st.markdown("---")
 
-    # ---------------- 2. DINNER & AUTO TABLE ASSIGNMENT ----------------
+    # ---------------- 2. GALA DINNER & AUTOMATIC MEJA ----------------
     st.subheader("🍽️ Gala Dinner Confirmation")
     current = "Yes" if int(p["dinner_join"]) else "No"
-    dinner_new = st.radio("Attend Gala Dinner?", ["Yes", "No"], index=0 if current=="Yes" else 1, horizontal=True)
+    dinner_new = st.radio("Attend Gala Dinner?", ["Yes", "No"], index=0 if current=="Yes" else 1, horizontal=True, key="radio_dinner_confirm")
 
-    if st.button("Update Dinner & Assign Table", use_container_width=True):
+    if st.button("Update Dinner & Assign Table", use_container_width=True, key="btn_update_dinner_table"):
         flag = 1 if dinner_new == "Yes" else 0
         table_no = p["table_number"]
+        p_type = clean(p['participant_type'])
 
+        # Aturan agihan meja tersuai
         if flag and (pd.isna(table_no) or str(table_no).strip() in ["", "None", "nan"]):
-            # Cari meja kosong (Maksimum 8 orang)
-            table_no = next_table()
-            if table_no is None:
-                st.error("Maaf, semua meja dinner (3, 4, 8, 9, 10, 27) telah penuh!")
-                return
+            if p_type == "Media":
+                table_no = 28
+            else:
+                table_no = next_table()
+                if table_no is None:
+                    st.error("Maaf, semua meja dinner (Maksimum 8 orang semeja) telah penuh!")
+                    return
         elif not flag:
             table_no = None
 
-        exec_sql("UPDATE participants SET dinner_join=?, table_number=? WHERE id=?", (flag, table_no, int(p["id"])))
-        log("DINNER_UPDATE", email)
-        st.success(f"Dinner status updated! Assigned to Table {table_no}" if flag else "Dinner status updated (Not attending).")
-        st.rerun()
+        # Simpan ke pangkalan data
+        exec_sql("UPDATE participants SET dinner_join=?, table_number=? WHERE id=?", (flag, table_no, p_id))
+        log("DINNER_UPDATE", f"{email} updated dinner status to {dinner_new}")
+        
+        # CETUSKAN POPUP DAN BIARKAN DIA KEKAL (Rerun hanya berlaku bila user klik Close)
+        show_dinner_table_popup(clean(p['full_name']), table_no)
 
     st.markdown("---")
 
-    # ---------------- 3. SELF DOOR GIFT COLLECTION ----------------
+    # ---------------- 3. COUNTER SELF DOOR GIFT ----------------
     st.subheader("🎁 Door Gift Collection")
     if int(p["door_gift_collected"]):
         st.success(f"✅ Door gift telah diambil pada: {clean(p['door_gift_time'])}")
     else:
         st.warning("Anda belum mengambil door gift.")
-        if st.button("Ambil Door Gift Sekarang (Tick)", type="primary", use_container_width=True):
+        if st.button("Ambil Door Gift Sekarang (Tick)", type="primary", use_container_width=True, key="btn_self_gift_tick"):
             exec_sql(
                 "UPDATE participants SET door_gift_collected=1, door_gift_time=? WHERE id=?",
-                (datetime.now().isoformat(timespec="seconds"), int(p["id"]))
+                (datetime.now().isoformat(timespec="seconds"), p_id)
             )
             log("DOOR_GIFT_SELF", email)
-            st.success("Door gift berjaya ditick! Sila ambil suvenir anda di kaunter.")
+            st.success("Door gift berjaya ditandakan!")
             st.rerun()
 
 def page_admin():
