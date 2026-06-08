@@ -232,70 +232,73 @@ def find_exact_sheet(sheet_name):
     return None
 
 def import_participants_from_excel():
-    sheets = read_sheets()
     imported = 0
+    updated = 0
     skipped = 0
 
-    possible_sheets = [
-        "Academic_Presenters",
-        "Speakers",
-        "Speaker",
-        "Industry_Participants",
-        "Participants",
-        "Dinner_Guests"
-    ]
+    df = find_exact_sheet("Participants")
 
-    for sheet_name in possible_sheets:
-        df = find_exact_sheet(sheet_name)
-        if df is None or df.empty:
+    if df is None or df.empty:
+        st.error("Sheet 'Participants' tidak dijumpai.")
+        return 0, 0, 0
+
+    for _, r in df.iterrows():
+        email = clean(r.get("Email", "")).lower()
+
+        if not email or "@" not in email:
+            skipped += 1
             continue
 
-        name_col = find_col(df, ["Full_Name", "Name", "Nama", "Presenter", "Speaker"])
-        email_col = find_col(df, ["Email", "Email_Address", "Email From Abstract"])
-        org_col = find_col(df, ["Organisation", "Organization", "Affiliation", "Institution"])
-        phone_col = find_col(df, ["Phone", "No_Telefon", "Telephone"])
-        type_col = find_col(df, ["Participant_Type", "Type", "Category"])
+        full_name = clean(r.get("Full_Name", "")) or email
+        phone = clean(r.get("Phone", ""))
+        organisation = clean(r.get("Organisation", ""))
+        category = clean(r.get("Category", "Participant"))
+        dinner = clean(r.get("Attend_Dinner", ""))
 
-        if email_col is None:
-            continue
+        dinner_flag = 1 if dinner.lower() in ["yes", "y", "1", "true"] else 0
 
-        for _, r in df.iterrows():
-            email = clean(r.get(email_col, "")).lower()
-            if not email or "@" not in email:
-                skipped += 1
-                continue
+        table_number = r.get("Table_Number", None)
+        if pd.isna(table_number) or table_number == "":
+            table_number = None
+        else:
+            try:
+                table_number = int(table_number)
+            except:
+                table_number = None
 
-            exists = df_sql(
-                "SELECT id FROM participants WHERE lower(email)=lower(?)",
-                (email,)
-            )
+        exists = df_sql(
+            "SELECT id FROM participants WHERE lower(email)=lower(?)",
+            (email,)
+        )
 
-            if not exists.empty:
-                skipped += 1
-                continue
-
-            full_name = clean(r.get(name_col, "")) if name_col else email
-            organisation = clean(r.get(org_col, "")) if org_col else ""
-            phone = clean(r.get(phone_col, "")) if phone_col else ""
-            ptype = clean(r.get(type_col, "")) if type_col else sheet_name
-
+        if exists.empty:
             exec_sql("""
                 INSERT INTO participants
-                (full_name,email,organisation,phone,participant_type,dinner_join,created_at)
-                VALUES (?,?,?,?,?,?,?)
+                (full_name,email,organisation,phone,participant_type,dinner_join,table_number,created_at)
+                VALUES (?,?,?,?,?,?,?,?)
             """, (
-                full_name,
-                email,
-                organisation,
-                phone,
-                ptype,
-                0,
+                full_name, email, organisation, phone, category,
+                dinner_flag, table_number,
                 datetime.now().isoformat(timespec="seconds")
             ))
-
             imported += 1
+        else:
+            exec_sql("""
+                UPDATE participants
+                SET full_name=?,
+                    organisation=?,
+                    phone=?,
+                    participant_type=?,
+                    dinner_join=?,
+                    table_number=?
+                WHERE lower(email)=lower(?)
+            """, (
+                full_name, organisation, phone, category,
+                dinner_flag, table_number, email
+            ))
+            updated += 1
 
-    return imported, skipped
+    return imported, updated, skipped
 
 def find_sheet(keywords):
     sheets = read_sheets()
@@ -373,11 +376,26 @@ def page_academic():
     abs_map = {}
     if not abstracts.empty and "Paper_ID" in abstracts.columns:
         for _, r in abstracts.iterrows():
-            abs_map[clean(r["Paper_ID"])] = {
-                "abstract": clean(r.get("Abstract_Text", "")),
-                "keywords": clean(r.get("Keywords", "")),
-                "authors": clean(r.get("Authors_Affiliation", "")),
-            }
+            pid = clean(r.get("Paper_ID", ""))
+            if pid:
+                abs_map[pid] = {
+                    "abstract": clean(r.get("Abstract_Text", "")),
+                    "keywords": clean(r.get("Keywords", "")),
+                }
+
+    non_paper_keywords = [
+        "registration",
+        "break",
+        "lunch",
+        "tea",
+        "best award",
+        "best paper",
+        "closing",
+        "opening",
+        "photo",
+        "prayer",
+        "certificate"
+    ]
 
     for (venue, time, session), g in programme.groupby(
         ["Venue", "Time", "Session"], dropna=False, sort=False
@@ -407,11 +425,16 @@ def page_academic():
             presenter = clean(r.get("Presenter", ""))
             email = clean(r.get("Email_From_Abstract", ""))
 
-            # skip registration row if no real paper id
-            if title.upper() == "REGISTRATION":
+            title_low = title.lower()
+            is_non_paper = (
+                not paper_id or
+                any(k in title_low for k in non_paper_keywords)
+            )
+
+            if is_non_paper:
                 st.markdown(f"""
                 <div class="paper">
-                  <div class="abstract-title">{title}</div>
+                  <div class="abstract-title">{title if title else session}</div>
                 </div>
                 """, unsafe_allow_html=True)
                 continue
@@ -422,7 +445,7 @@ def page_academic():
             st.markdown(f"""
             <div class="paper">
               <div class="paper-top">
-                <span class="pid">{paper_id if paper_id else 'Programme'}</span>
+                <span class="pid">{paper_id}</span>
                 <span class="author">{presenter}</span>
               </div>
               <div class="abstract-title">{title}</div>
@@ -433,36 +456,6 @@ def page_academic():
             """, unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
-
-def page_industry():
-    st.header("🏛 Industrial Conference Tentative")
-
-    df = find_sheet(["industry", "industrial"])
-    if df is None or df.empty:
-        st.info("Industry data belum ada. Admin perlu upload Excel dalam Admin → Upload Excel.")
-        return
-
-    time_col = find_col(df, ["time", "masa", "slot"])
-    title_col = find_col(df, ["title", "programme", "program", "agenda", "session"])
-    speaker_col = find_col(df, ["speaker", "name", "nama", "presenter"])
-
-    for _, r in df.iterrows():
-        time_txt = clean(r[time_col]) if time_col else "Time TBC"
-        title = clean(r[title_col]) if title_col else "Industry Session"
-        speaker = clean(r[speaker_col]) if speaker_col else ""
-
-        st.markdown(f"""
-        <div class="session">
-          <div class="session-grid">
-            <div class="time">{time_txt}</div>
-            <div>
-              <div class="label">Industrial Conference</div>
-              <div class="title">{title}</div>
-              <div style="color:#cfc9df;margin-top:8px;">{speaker}</div>
-            </div>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
 
 def page_dinner():
     show_poster(DINNER_POSTER)
@@ -669,14 +662,17 @@ def page_admin():
         st.info("Excel aktif: niche_data.xlsx")
         st.write("Sheets detected:", list(sheets.keys()))
 
-    st.markdown("---")
-
+        st.markdown("---")
     st.markdown("### 📥 Import Participants for Check-In")
 
-if st.button("Import Participants From Excel"):
-    imported, skipped = import_participants_from_excel()
-    st.success(f"Import selesai. Imported: {imported}. Skipped/Duplicate: {skipped}.")
-    st.rerun()
+    if st.button("Import Participants From Excel"):
+        imported, updated, skipped = import_participants_from_excel()
+        st.success(
+            f"Import selesai. New: {imported} | Updated: {updated} | Skipped: {skipped}"
+        )
+        st.rerun()
+
+
 
 
     
