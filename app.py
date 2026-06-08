@@ -817,13 +817,33 @@ def page_admin():
         st.dataframe(pdf, use_container_width=True, hide_index=True)
 
     st.markdown("---")
-    st.markdown("## 🍽 Table Assignment")
+    st.markdown("## 🍽 Table Assignment Summary")
 
     occ = table_occupancy()
-    occ_df = pd.DataFrame([
-        {"Table": t, "Occupied": occ[t], "Capacity": SEATS, "Available": SEATS - occ[t]}
-        for t in TABLES
-    ])
+    
+    # Gabungkan senarai TABLES rasmi dengan meja 28 (Media) secara dinamik
+    all_monitored_tables = TABLES + [28] if 28 not in TABLES else TABLES
+    
+    table_status_list = []
+    for t in all_monitored_tables:
+        occupied_count = occ.get(t, 0)
+        
+        # Bezakan kapasiti: Meja 28 khas untuk Media, meja lain terhad kepada SEATS (8 orang)
+        if t == 28:
+            capacity_label = "Khas Media"
+            available_label = "-"
+        else:
+            capacity_label = SEATS
+            available_label = max(0, SEATS - occupied_count)
+            
+        table_status_list.append({
+            "Table Number": f"Table {t}",
+            "Occupied (Pax)": occupied_count,
+            "Max Capacity": capacity_label,
+            "Available Seats": available_label
+        })
+        
+    occ_df = pd.DataFrame(table_status_list)
     st.dataframe(occ_df, use_container_width=True, hide_index=True)
 
     dinner_df = df_sql("""
