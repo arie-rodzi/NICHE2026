@@ -456,6 +456,39 @@ def page_academic():
             """, unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
+def page_industry():
+    st.header("🏛 Industrial Conference Tentative")
+
+    df = find_exact_sheet("Industry_Programme")
+
+    if df is None or df.empty:
+        df = find_exact_sheet("Industrial_Programme")
+
+    if df is None or df.empty:
+        st.info("Industry_Programme belum ada dalam Excel.")
+        return
+
+    for _, r in df.iterrows():
+        time_txt = clean(r.get("Time", ""))
+        session = clean(r.get("Session", ""))
+        title = clean(r.get("Title", ""))
+        speaker = clean(r.get("Speaker", ""))
+        venue = clean(r.get("Venue", ""))
+
+        display_title = title if title else session
+
+        st.markdown(f"""
+        <div class="session">
+          <div class="session-grid">
+            <div class="time">{time_txt if time_txt else 'Time TBC'}</div>
+            <div>
+              <div class="label">Industrial Conference {('· ' + venue) if venue else ''}</div>
+              <div class="title">{display_title if display_title else 'Industry Session'}</div>
+              <div style="color:#cfc9df;margin-top:8px;">{speaker}</div>
+            </div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 def page_dinner():
     show_poster(DINNER_POSTER)
