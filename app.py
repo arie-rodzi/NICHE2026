@@ -570,7 +570,7 @@ def page_register():
         st.success("Registration successful. Please go to Check-In tab.")
 
 def page_checkin():
-    st.header("✓ Self Check-In")
+    st.header("✓ Self Check-In & Counter Services")
 
     email = st.text_input("Enter registered email").strip().lower()
     if not email:
@@ -597,9 +597,7 @@ def page_checkin():
     c1.info("Checked-in" if int(p["checked_in"]) else "Not checked-in")
     c2.info("Dinner: Yes" if int(p["dinner_join"]) else "Dinner: No")
     
-    # --- FIXED INDENTATION START ---
     table_val = p["table_number"]
-
     try:
         if pd.notna(table_val) and str(table_val).strip() not in ["", "nan", "None"]:
             c3.success(f"Table {int(float(table_val))}")
@@ -607,10 +605,10 @@ def page_checkin():
             c3.warning("Table not assigned")
     except:
         c3.warning("Table not assigned")
-    # --- FIXED INDENTATION END ---
 
+    # ---------------- 1. CONFIRM CHECK-IN ----------------
     if not int(p["checked_in"]):
-        if st.button("Confirm Check-In"):
+        if st.button("Confirm Check-In", use_container_width=True):
             exec_sql(
                 "UPDATE participants SET checked_in=1, checkin_time=? WHERE id=?",
                 (datetime.now().isoformat(timespec="seconds"), int(p["id"]))
@@ -619,31 +617,49 @@ def page_checkin():
             st.success("Check-in successful.")
             st.rerun()
     else:
-        st.success(f"Already checked in: {clean(p['checkin_time'])}")
+        st.success(f"Already checked in at: {clean(p['checkin_time'])}")
 
-    st.subheader("Dinner Confirmation")
+    st.markdown("---")
+
+    # ---------------- 2. DINNER & AUTO TABLE ASSIGNMENT ----------------
+    st.subheader("🍽️ Gala Dinner Confirmation")
     current = "Yes" if int(p["dinner_join"]) else "No"
     dinner_new = st.radio("Attend Gala Dinner?", ["Yes", "No"], index=0 if current=="Yes" else 1, horizontal=True)
 
-    if st.button("Update Dinner Status"):
+    if st.button("Update Dinner & Assign Table", use_container_width=True):
         flag = 1 if dinner_new == "Yes" else 0
         table_no = p["table_number"]
 
-        if flag and pd.isna(table_no):
+        if flag and (pd.isna(table_no) or str(table_no).strip() in ["", "None", "nan"]):
+            # Cari meja kosong (Maksimum 8 orang)
             table_no = next_table()
-        if not flag:
+            if table_no is None:
+                st.error("Maaf, semua meja dinner (3, 4, 8, 9, 10, 27) telah penuh!")
+                return
+        elif not flag:
             table_no = None
 
         exec_sql("UPDATE participants SET dinner_join=?, table_number=? WHERE id=?", (flag, table_no, int(p["id"])))
         log("DINNER_UPDATE", email)
-        st.success("Dinner status updated.")
+        st.success(f"Dinner status updated! Assigned to Table {table_no}" if flag else "Dinner status updated (Not attending).")
         st.rerun()
 
-    st.subheader("Door Gift")
+    st.markdown("---")
+
+    # ---------------- 3. SELF DOOR GIFT COLLECTION ----------------
+    st.subheader("🎁 Door Gift Collection")
     if int(p["door_gift_collected"]):
-        st.success(f"Door gift collected: {clean(p['door_gift_time'])}")
+        st.success(f"✅ Door gift telah diambil pada: {clean(p['door_gift_time'])}")
     else:
-        st.info("Door gift will be ticked by staff/admin.")
+        st.warning("Anda belum mengambil door gift.")
+        if st.button("Ambil Door Gift Sekarang (Tick)", type="primary", use_container_width=True):
+            exec_sql(
+                "UPDATE participants SET door_gift_collected=1, door_gift_time=? WHERE id=?",
+                (datetime.now().isoformat(timespec="seconds"), int(p["id"]))
+            )
+            log("DOOR_GIFT_SELF", email)
+            st.success("Door gift berjaya ditick! Sila ambil suvenir anda di kaunter.")
+            st.rerun()
 
 def page_admin():
     st.header("🔐 Admin")
