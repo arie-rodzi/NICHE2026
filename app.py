@@ -222,6 +222,15 @@ def read_sheets():
         st.error(f"Fail Excel tidak dapat dibaca: {e}")
         return {}
 
+def find_exact_sheet(sheet_name):
+    sheets = read_sheets()
+
+    for name, df in sheets.items():
+        if name.strip().lower() == sheet_name.strip().lower():
+            return df
+
+    return None
+
 def find_sheet(keywords):
     sheets = read_sheets()
     for name, df in sheets.items():
