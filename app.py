@@ -670,6 +670,16 @@ def page_admin():
         st.write("Sheets detected:", list(sheets.keys()))
 
     st.markdown("---")
+
+    st.markdown("### 📥 Import Participants for Check-In")
+
+if st.button("Import Participants From Excel"):
+    imported, skipped = import_participants_from_excel()
+    st.success(f"Import selesai. Imported: {imported}. Skipped/Duplicate: {skipped}.")
+    st.rerun()
+
+
+    
     st.markdown("## 👥 Registered Participants")
 
     pdf = df_sql("SELECT * FROM participants ORDER BY id DESC")
@@ -835,6 +845,8 @@ def page_admin():
             st.rerun()
         else:
             st.error("Taip DELETEFILES dahulu.")
+
+
 
 # ================= MAIN =================
 brand()
