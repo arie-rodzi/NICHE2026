@@ -596,10 +596,15 @@ def page_checkin():
     c1, c2, c3 = st.columns(3)
     c1.info("Checked-in" if int(p["checked_in"]) else "Not checked-in")
     c2.info("Dinner: Yes" if int(p["dinner_join"]) else "Dinner: No")
-    if pd.notna(p["table_number"]):
-        c3.success(f"Table {int(p['table_number'])}")
+   table_val = p["table_number"]
+
+try:
+    if pd.notna(table_val) and str(table_val).strip() not in ["", "nan", "None"]:
+        c3.success(f"Table {int(float(table_val))}")
     else:
         c3.warning("Table not assigned")
+except:
+    c3.warning("Table not assigned")
 
     if not int(p["checked_in"]):
         if st.button("Confirm Check-In"):
