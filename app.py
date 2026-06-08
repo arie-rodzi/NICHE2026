@@ -54,7 +54,7 @@ h1, h2, h3 {
 }
 
 .hero {
-    padding: 42px;
+    padding: 2px;
     border-radius: 32px;
     background:
     linear-gradient(135deg, rgba(255,215,128,0.20), rgba(0,90,180,0.22)),
