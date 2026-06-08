@@ -323,11 +323,20 @@ def table_occupancy():
         WHERE dinner_join=1 AND table_number IS NOT NULL
         GROUP BY table_number
     """)
-    occ = {t:0 for t in TABLES}
+    
+    # Bina dictionary awal berdasarkan senarai TABLES rasmi
+    occ = {t: 0 for t in TABLES}
+    
     for _, r in df.iterrows():
-        occ[int(r["table_number"])] = int(r["n"])
+        try:
+            t_num = int(float(r["table_number"]))
+            # Jika meja ada dalam senarai rasmi atau luar rasmi, ia tetap selamat digabungkan
+            occ[t_num] = int(r["n"])
+        except (ValueError, TypeError):
+            # Mengelakkan crash jika ada data pelik seperti string kosong, "nan", atau None
+            continue
+            
     return occ
-
 def next_table():
     occ = table_occupancy()
     for t in TABLES:
