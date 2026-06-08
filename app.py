@@ -231,6 +231,72 @@ def find_exact_sheet(sheet_name):
 
     return None
 
+def import_participants_from_excel():
+    sheets = read_sheets()
+    imported = 0
+    skipped = 0
+
+    possible_sheets = [
+        "Academic_Presenters",
+        "Speakers",
+        "Speaker",
+        "Industry_Participants",
+        "Participants",
+        "Dinner_Guests"
+    ]
+
+    for sheet_name in possible_sheets:
+        df = find_exact_sheet(sheet_name)
+        if df is None or df.empty:
+            continue
+
+        name_col = find_col(df, ["Full_Name", "Name", "Nama", "Presenter", "Speaker"])
+        email_col = find_col(df, ["Email", "Email_Address", "Email From Abstract"])
+        org_col = find_col(df, ["Organisation", "Organization", "Affiliation", "Institution"])
+        phone_col = find_col(df, ["Phone", "No_Telefon", "Telephone"])
+        type_col = find_col(df, ["Participant_Type", "Type", "Category"])
+
+        if email_col is None:
+            continue
+
+        for _, r in df.iterrows():
+            email = clean(r.get(email_col, "")).lower()
+            if not email or "@" not in email:
+                skipped += 1
+                continue
+
+            exists = df_sql(
+                "SELECT id FROM participants WHERE lower(email)=lower(?)",
+                (email,)
+            )
+
+            if not exists.empty:
+                skipped += 1
+                continue
+
+            full_name = clean(r.get(name_col, "")) if name_col else email
+            organisation = clean(r.get(org_col, "")) if org_col else ""
+            phone = clean(r.get(phone_col, "")) if phone_col else ""
+            ptype = clean(r.get(type_col, "")) if type_col else sheet_name
+
+            exec_sql("""
+                INSERT INTO participants
+                (full_name,email,organisation,phone,participant_type,dinner_join,created_at)
+                VALUES (?,?,?,?,?,?,?)
+            """, (
+                full_name,
+                email,
+                organisation,
+                phone,
+                ptype,
+                0,
+                datetime.now().isoformat(timespec="seconds")
+            ))
+
+            imported += 1
+
+    return imported, skipped
+
 def find_sheet(keywords):
     sheets = read_sheets()
     for name, df in sheets.items():
