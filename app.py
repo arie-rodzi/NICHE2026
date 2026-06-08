@@ -734,9 +734,18 @@ def page_checkin():
     p = df.iloc[0]
     p_id = int(p['id'])
 
-    # --- DEKLARASI POP-UP MEJA DINNER YANG KEKAL (TIADA AUTO-RESET) ---
+    # --- POP-UP MODAL MEWAH (KALIS DATA ROBOT & POPUP KEKAL) ---
     @st.dialog("🍽️ Gala Dinner Seat Allocation", width="large")
     def show_dinner_table_popup(name, table_no):
+        
+        # --- LOGIK TAPISAN DATA ROBOT (BYTES TO INT) ---
+        display_table = table_no
+        if isinstance(table_no, bytes):
+            try:
+                display_table = int.from_bytes(table_no, byteorder='little')
+            except:
+                display_table = table_no
+
         st.markdown(f"""
         <div style="background: linear-gradient(135deg, rgba(255,240,163,0.1), rgba(212,175,55,0.05)); padding: 25px; border-radius: 18px; border: 1px solid rgba(244,212,105,0.3); text-align: center; margin-bottom: 15px;">
             <div style="font-size: 50px; margin-bottom: 10px;">🍽️</div>
@@ -746,13 +755,22 @@ def page_checkin():
         </div>
         """, unsafe_allow_html=True)
         
-        if table_no:
-            st.markdown(f"""
-            <div style="background: #050a2e; border: 2px solid #d4af37; border-radius: 14px; padding: 25px; text-align: center; margin-bottom: 20px;">
-                <span style="color: #aaa4bd; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Your Assigned Seat</span>
-                <h1 style="color: #ffe88a !important; font-size: 48px; font-weight: 900; margin: 10px 0 0 0;">TABLE {table_no}</h1>
-            </div>
-            """, unsafe_allow_html=True)
+        if display_table and str(display_table).strip() not in ["", "None", "nan"]:
+            try:
+                table_num = int(float(display_table))
+                st.markdown(f"""
+                <div style="background: #050a2e; border: 2px solid #d4af37; border-radius: 14px; padding: 25px; text-align: center; margin-bottom: 20px;">
+                    <span style="color: #aaa4bd; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Your Assigned Seat</span>
+                    <h1 style="color: #ffe88a !important; font-size: 48px; font-weight: 900; margin: 10px 0 0 0;">TABLE {table_num}</h1>
+                </div>
+                """, unsafe_allow_html=True)
+            except:
+                st.markdown(f"""
+                <div style="background: #050a2e; border: 2px solid #d4af37; border-radius: 14px; padding: 25px; text-align: center; margin-bottom: 20px;">
+                    <span style="color: #aaa4bd; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Your Assigned Seat</span>
+                    <h1 style="color: #ffe88a !important; font-size: 48px; font-weight: 900; margin: 10px 0 0 0;">TABLE {display_table}</h1>
+                </div>
+                """, unsafe_allow_html=True)
         else:
             st.markdown("""
             <div style="background: rgba(255,255,255,0.05); border: 1px dashed rgba(255,255,255,0.2); border-radius: 14px; padding: 25px; text-align: center; margin-bottom: 20px; color: #aaa4bd; font-size: 18px; font-weight: 700;">
@@ -763,7 +781,7 @@ def page_checkin():
         if st.button("OK, Close Window", use_container_width=True, key="btn_close_dinner_pop"):
             st.rerun()
 
-    # --- KAD MAKLUMAT PESERTA ---
+    # --- KAD MAKLUMAT RINGKAS PESERTA ---
     st.markdown(f"""
     <div class="card">
     <h3>{clean(p['full_name'])}</h3>
@@ -773,20 +791,27 @@ def page_checkin():
     </div>
     """, unsafe_allow_html=True)
 
+    # Membaca data meja semasa check-in untuk paparan kad info ringkas
+    raw_table_val = p["table_number"]
+    if isinstance(raw_table_val, bytes):
+        try:
+            raw_table_val = int.from_bytes(raw_table_val, byteorder='little')
+        except:
+            pass
+
     c1, c2, c3 = st.columns(3)
     c1.info("Checked-in" if int(p["checked_in"]) else "Not checked-in")
     c2.info("Dinner: Yes" if int(p["dinner_join"]) else "Dinner: No")
     
-    table_val = p["table_number"]
     try:
-        if pd.notna(table_val) and str(table_val).strip() not in ["", "nan", "None"]:
-            c3.success(f"Table {int(float(table_val))}")
+        if pd.notna(raw_table_val) and str(raw_table_val).strip() not in ["", "nan", "None"]:
+            c3.success(f"Table {int(float(raw_table_val))}")
         else:
             c3.warning("Table not assigned")
     except:
         c3.warning("Table not assigned")
 
-    # ---------------- 1. BUTTON CONFIRM CHECK-IN ----------------
+    # ---------------- 1. SAHKAN STATUS CHECK-IN UTAMA ----------------
     if not int(p["checked_in"]):
         if st.button("Confirm Check-In", use_container_width=True, key="btn_main_checkin"):
             exec_sql(
@@ -801,7 +826,7 @@ def page_checkin():
 
     st.markdown("---")
 
-    # ---------------- 2. GALA DINNER & AUTOMATIC MEJA ----------------
+    # ---------------- 2. KEMASKINI GALA DINNER & AUTO MEJA ----------------
     st.subheader("🍽️ Gala Dinner Confirmation")
     current = "Yes" if int(p["dinner_join"]) else "No"
     dinner_new = st.radio("Attend Gala Dinner?", ["Yes", "No"], index=0 if current=="Yes" else 1, horizontal=True, key="radio_dinner_confirm")
@@ -811,7 +836,7 @@ def page_checkin():
         table_no = p["table_number"]
         p_type = clean(p['participant_type'])
 
-        # Aturan agihan meja tersuai
+        # Aturan Khas: Media lock Table 28, lain-lain cari meja kosong max 8 orang
         if flag and (pd.isna(table_no) or str(table_no).strip() in ["", "None", "nan"]):
             if p_type == "Media":
                 table_no = 28
@@ -823,16 +848,16 @@ def page_checkin():
         elif not flag:
             table_no = None
 
-        # Simpan ke pangkalan data
+        # Kemaskini pangkalan data SQLite
         exec_sql("UPDATE participants SET dinner_join=?, table_number=? WHERE id=?", (flag, table_no, p_id))
         log("DINNER_UPDATE", f"{email} updated dinner status to {dinner_new}")
         
-        # CETUSKAN POPUP DAN BIARKAN DIA KEKAL (Rerun hanya berlaku bila user klik Close)
+        # CETUSKAN POPUP MEJA DINNER (Popup kekal sehinggalah klik Close)
         show_dinner_table_popup(clean(p['full_name']), table_no)
 
     st.markdown("---")
 
-    # ---------------- 3. COUNTER SELF DOOR GIFT ----------------
+    # ---------------- 3. TICK AMBIL DOOR GIFT DI KAUNTER ----------------
     st.subheader("🎁 Door Gift Collection")
     if int(p["door_gift_collected"]):
         st.success(f"✅ Door gift telah diambil pada: {clean(p['door_gift_time'])}")
